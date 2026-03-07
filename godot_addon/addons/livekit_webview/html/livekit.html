@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>LiveKit Bridge</title>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      background: #0d0f1a;
+      color: #c8cce0;
+      font-family: 'Segoe UI', monospace;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Top bar ── */
+    #topbar {
+      background: #13162a;
+      border-bottom: 1px solid #1e2240;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: move;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    #topbar .title { font-weight: 700; color: #7c73f5; font-size: 13px; }
+    #status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ef4444; flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    #status-dot.connected { background: #22c55e; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    #status-text { color: #9094a8; font-size: 11px; }
+    .spacer { flex: 1; }
+    #room-badge {
+      background: #1e2240; border: 1px solid #2a2e52;
+      border-radius: 12px; padding: 2px 10px;
+      font-size: 11px; color: #7c73f5;
+      display: none;
+    }
+
+    /* ── Participants strip ── */
+    #participants {
+      background: #101220;
+      border-bottom: 1px solid #1e2240;
+      padding: 6px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 34px;
+      flex-shrink: 0;
+    }
+    .chip {
+      background: #1a1d30;
+      border: 1px solid #2a2e52;
+      border-radius: 14px;
+      padding: 3px 10px;
+      font-size: 11px;
+      display: flex; align-items: center; gap: 5px;
+      transition: border-color 0.2s;
+    }
+    .chip.speaking { border-color: #22c55e; }
+    .chip.muted .mic { opacity: 0.3; }
+
+    /* ── Log area ── */
+    #log-wrap {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #log-header {
+      padding: 6px 12px;
+      font-size: 10px;
+      color: #4a4e68;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      border-bottom: 1px solid #1a1d30;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #clear-btn {
+      background: none; border: none; color: #4a4e68;
+      cursor: pointer; font-size: 10px;
+      padding: 0;
+    }
+    #clear-btn:hover { color: #9094a8; }
+    #log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px;
+      font-family: monospace;
+      font-size: 11px;
+      line-height: 1.7;
+    }
+    #log::-webkit-scrollbar { width: 4px; }
+    #log::-webkit-scrollbar-track { background: #0d0f1a; }
+    #log::-webkit-scrollbar-thumb { background: #2a2e52; border-radius: 2px; }
+
+    .log-info    { color: #4a4e78; }
+    .log-success { color: #22c55e; }
+    .log-error   { color: #ef4444; }
+    .log-event   { color: #7c73f5; }
+    .log-warn    { color: #f59e0b; }
+
+    /* ── Bottom stats bar ── */
+    #stats {
+      background: #13162a;
+      border-top: 1px solid #1e2240;
+      padding: 5px 12px;
+      display: flex;
+      gap: 16px;
+      font-size: 10px;
+      color: #4a4e68;
+      flex-shrink: 0;
+    }
+    #stats span { color: #7c73f5; }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="topbar">
+  <div id="status-dot"></div>
+  <div class="title">🎙 LiveKit</div>
+  <div id="status-text">Disconnected</div>
+  <div class="spacer"></div>
+  <div id="room-badge"></div>
+</div>
+
+<!-- Participants -->
+<div id="participants">
+  <span style="color:#4a4e68;font-size:11px;align-self:center;">No participants</span>
+</div>
+
+<!-- Log -->
+<div id="log-wrap">
+  <div id="log-header">
+    Event Log
+    <button id="clear-btn" onclick="document.getElementById('log').innerHTML=''">clear</button>
+  </div>
+  <div id="log"></div>
+</div>
+
+<!-- Stats -->
+<div id="stats">
+  <div>Participants: <span id="stat-participants">0</span></div>
+  <div>Room: <span id="stat-room">—</span></div>
+  <div>Latency: <span id="stat-latency">—</span></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  State
+// ══════════════════════════════════════════════════════════
+let room        = null;
+let isMuted     = false;
+let currentRoom = null;
+let pingStart   = null;
+
+// ══════════════════════════════════════════════════════════
+//  Logging
+// ══════════════════════════════════════════════════════════
+function log(msg, type = 'info') {
+  const box  = document.getElementById('log');
+  const line = document.createElement('div');
+  const t    = new Date().toLocaleTimeString('en', { hour12: false });
+  line.className = 'log-' + type;
+  line.textContent = `[${t}] ${msg}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+// ══════════════════════════════════════════════════════════
+//  Godot Bridge helpers
+// ══════════════════════════════════════════════════════════
+function toGodot(event, data) {
+  if (window.godot) {
+    window.godot.send(event, data || {});
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  LiveKit Core
+// ══════════════════════════════════════════════════════════
+async function connectRoom(livekit_url, token) {
+  if (room) {
+    log('Already connected — disconnecting first', 'warn');
+    await room.disconnect();
+  }
+
+  log(`Connecting to ${livekit_url}...`, 'info');
+
+  room = new LivekitClient.Room({
+    adaptiveStream: true,
+    dynacast:       true,
+  });
+
+  // ── Events ──
+  room.on(LivekitClient.RoomEvent.Connected, () => {
+    log('✅ Connected to room: ' + room.name, 'success');
+    setConnected(true, room.name);
+    renderParticipants();
+    toGodot('connected', { room_id: room.name });
+  });
+
+  room.on(LivekitClient.RoomEvent.Disconnected, (reason) => {
+    log('Disconnected: ' + (reason || 'unknown'), 'warn');
+    setConnected(false);
+    renderParticipants();
+    toGodot('disconnected', { reason: reason || '' });
+  });
+
+  room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
+    log('👋 ' + (p.name || p.identity) + ' joined', 'event');
+    renderParticipants();
+    toGodot('participant_joined', { identity: p.identity, name: p.name || p.identity });
+  });
+
+  room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => {
+    log('👋 ' + (p.name || p.identity) + ' left', 'warn');
+    renderParticipants();
+    toGodot('participant_left', { identity: p.identity, name: p.name || p.identity });
+  });
+
+  room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+    const ids = speakers.map(s => s.identity);
+    renderParticipants(ids);
+    toGodot('speakers_changed', { speakers: ids });
+  });
+
+  room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, pub, participant) => {
+    log('🔊 Audio from ' + (participant.name || participant.identity), 'event');
+    toGodot('track_subscribed', { identity: participant.identity });
+    if (track.kind === LivekitClient.Track.Kind.Audio) {
+      const el = track.attach();
+      el.volume = 1.0;
+      el.muted  = false;
+      el.setAttribute('autoplay', '');
+      el.setAttribute('playsinline', '');
+      document.body.appendChild(el);
+      el.play().catch(() => {
+        log('Autoplay blocked — will retry on user gesture', 'warn');
+      });
+    }
+  });
+
+  room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, pub, participant) => {
+    track.detach();
+    toGodot('track_unsubscribed', { identity: participant.identity });
+  });
+
+  room.on(LivekitClient.RoomEvent.TrackMuted, (pub, participant) => {
+    renderParticipants();
+    toGodot('participant_muted', { identity: participant.identity, muted: true });
+  });
+
+  room.on(LivekitClient.RoomEvent.TrackUnmuted, (pub, participant) => {
+    renderParticipants();
+    toGodot('participant_muted', { identity: participant.identity, muted: false });
+  });
+
+  room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant, kind, topic) => {
+    const text = new TextDecoder().decode(payload);
+    log('💬 Data from ' + (participant?.identity || 'server') + ': ' + text, 'event');
+    toGodot('data_received', {
+      identity: participant?.identity || '',
+      message:  text,
+      topic:    topic || ''
+    });
+  });
+
+  room.on(LivekitClient.RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+    if (participant.identity === room.localParticipant.identity) {
+      toGodot('connection_quality', { quality: quality });
+    }
+  });
+
+  // ── Connect ──
+  try {
+    await room.connect(livekit_url, token);
+    await room.localParticipant.setMicrophoneEnabled(true);
+    log('🎤 Microphone enabled', 'success');
+    toGodot('mic_ready', {});
+  } catch (e) {
+    log('Connect failed: ' + e.message, 'error');
+    toGodot('error', { message: e.message });
+    room = null;
+    setConnected(false);
+  }
+}
+
+async function disconnectRoom() {
+  if (!room) return;
+  log('Disconnecting...', 'info');
+  await room.disconnect();
+  room = null;
+  setConnected(false);
+  renderParticipants();
+}
+
+async function setMicEnabled(enabled) {
+  if (!room) return;
+  isMuted = !enabled;
+  await room.localParticipant.setMicrophoneEnabled(enabled);
+  log(enabled ? '🎤 Mic unmuted' : '🔇 Mic muted', 'info');
+  renderParticipants();
+  toGodot('mic_state', { enabled: enabled });
+}
+
+async function sendData(message, topic) {
+  if (!room) return;
+  const payload = new TextEncoder().encode(message);
+  await room.localParticipant.publishData(payload, { topic: topic || 'default' });
+  log('📤 Sent: ' + message, 'info');
+}
+
+// ══════════════════════════════════════════════════════════
+//  UI Helpers
+// ══════════════════════════════════════════════════════════
+function setConnected(on, roomName) {
+  const dot  = document.getElementById('status-dot');
+  const txt  = document.getElementById('status-text');
+  const badge = document.getElementById('room-badge');
+  const statRoom = document.getElementById('stat-room');
+
+  dot.className  = on ? 'connected' : '';
+  txt.textContent = on ? 'Connected' : 'Disconnected';
+
+  if (on && roomName) {
+    badge.textContent = roomName;
+    badge.style.display = 'block';
+    statRoom.textContent = roomName;
+  } else {
+    badge.style.display = 'none';
+    statRoom.textContent = '—';
+  }
+}
+
+function renderParticipants(speakingIds = []) {
+  const wrap = document.getElementById('participants');
+  const stat = document.getElementById('stat-participants');
+  wrap.innerHTML = '';
+
+  if (!room) {
+    wrap.innerHTML = '<span style="color:#4a4e68;font-size:11px;align-self:center;">No participants</span>';
+    stat.textContent = '0';
+    return;
+  }
+
+  let count = 0;
+
+  // Local participant
+  const lp   = room.localParticipant;
+  const lpMic = lp.getTrackPublication(LivekitClient.Track.Source.Microphone);
+  const chip = document.createElement('div');
+  chip.className = 'chip' +
+    (speakingIds.includes(lp.identity) ? ' speaking' : '') +
+    (isMuted ? ' muted' : '');
+  chip.innerHTML = `<span class="mic">${isMuted ? '🔇' : '🎤'}</span>${lp.name || lp.identity} <span style="color:#4a4e68">(you)</span>`;
+  wrap.appendChild(chip);
+  count++;
+
+  // Remote participants
+  room.remoteParticipants.forEach(p => {
+    const micPub = p.getTrackPublication(LivekitClient.Track.Source.Microphone);
+    const muted  = micPub ? micPub.isMuted : false;
+    const c = document.createElement('div');
+    c.className = 'chip' +
+      (speakingIds.includes(p.identity) ? ' speaking' : '') +
+      (muted ? ' muted' : '');
+    c.innerHTML = `<span class="mic">${muted ? '🔇' : '🎧'}</span>${p.name || p.identity}`;
+    wrap.appendChild(c);
+    count++;
+  });
+
+  stat.textContent = count;
+}
+
+// ══════════════════════════════════════════════════════════
+//  Godot → Page commands
+// ══════════════════════════════════════════════════════════
+function setupGodotListeners() {
+  // Called once bridge is ready
+  window.godot.on('connect', async (data) => {
+    log('← connect command from Godot', 'info');
+    await connectRoom(data.url, data.token);
+  });
+
+  window.godot.on('disconnect', async () => {
+    log('← disconnect command from Godot', 'info');
+    await disconnectRoom();
+  });
+
+  window.godot.on('set_mic', async (data) => {
+    await setMicEnabled(data.enabled);
+  });
+
+  window.godot.on('send_data', async (data) => {
+    await sendData(data.message, data.topic || 'default');
+  });
+
+  window.godot.on('ping', () => {
+    pingStart = Date.now();
+    toGodot('pong', { ts: pingStart });
+  });
+
+  log('Bridge ready — waiting for Godot commands', 'success');
+  toGodot('bridge_ready', {});
+}
+
+// ══════════════════════════════════════════════════════════
+//  Wait for bridge injection (WebView2 injects after load)
+// ══════════════════════════════════════════════════════════
+function waitForBridge() {
+  if (window.godot) {
+    setupGodotListeners();
+  } else {
+    setTimeout(waitForBridge, 50);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  log('LiveKit bridge page loaded', 'info');
+  waitForBridge();
+});
+</script>
+</body>
+</html>
