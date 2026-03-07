@@ -6,6 +6,7 @@
 #include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/json.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 
 #include <shlwapi.h>
 #pragma comment(lib, "Shlwapi.lib")
