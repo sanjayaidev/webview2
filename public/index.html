@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Automation App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0d0d0f;
+    --surface:   #141417;
+    --surface2:  #1c1c21;
+    --border:    #2a2a32;
+    --accent:    #00e5ff;
+    --accent2:   #7c4dff;
+    --danger:    #ff4d6d;
+    --success:   #00e676;
+    --warn:      #ffab40;
+    --text:      #e8e8f0;
+    --muted:     #6b6b80;
+    --mono:      'Space Mono', monospace;
+    --sans:      'DM Sans', sans-serif;
+    --radius:    8px;
+    --glow:      0 0 20px rgba(0,229,255,0.15);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    font-size: 14px;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 200px;
+    min-width: 200px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 20px 0;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 0 20px 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .logo span { display: block; color: var(--muted); font-size: 9px; letter-spacing: 2px; margin-top: 2px; }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(0,229,255,0.05); }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success);
+    margin-left: auto;
+    box-shadow: 0 0 6px var(--success);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── Main ── */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .topbar {
+    height: 52px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 12px;
+    background: var(--surface);
+  }
+  .topbar-title { font-family: var(--mono); font-size: 12px; color: var(--text); letter-spacing: 1px; }
+  .topbar-badge {
+    font-size: 10px; font-family: var(--mono);
+    background: rgba(0,229,255,0.1); color: var(--accent);
+    border: 1px solid rgba(0,229,255,0.2);
+    padding: 2px 8px; border-radius: 20px;
+  }
+  .ws-status { margin-left: auto; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .ws-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+  .ws-dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+  }
+  .content::-webkit-scrollbar { width: 4px; }
+  .content::-webkit-scrollbar-track { background: transparent; }
+  .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Panels */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Grid layout ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .card-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title::after { content:''; flex:1; height:1px; background: var(--border); }
+
+  /* ── Inputs ── */
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.5px; }
+  .field input, .field select, .field textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 8px 12px;
+    font-family: var(--sans);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0,229,255,0.08);
+  }
+  .field textarea { resize: vertical; min-height: 80px; font-family: var(--mono); font-size: 12px; }
+  .field select option { background: var(--surface2); }
+
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface2);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:active { transform: scale(0.97); }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: #33eaff; border-color: #33eaff; color: #000; }
+
+  .btn-danger { border-color: var(--danger); color: var(--danger); }
+  .btn-danger:hover { background: rgba(255,77,109,0.1); }
+
+  .btn-success { border-color: var(--success); color: var(--success); }
+  .btn-success:hover { background: rgba(0,230,118,0.1); }
+
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-full { width: 100%; }
+
+  /* ── Output log ── */
+  .log {
+    background: #080809;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    min-height: 120px;
+    max-height: 200px;
+    overflow-y: auto;
+    line-height: 1.8;
+  }
+  .log::-webkit-scrollbar { width: 3px; }
+  .log::-webkit-scrollbar-thumb { background: var(--border); }
+  .log-line { display: flex; gap: 10px; }
+  .log-time { color: var(--muted); min-width: 70px; }
+  .log-ok   { color: var(--success); }
+  .log-err  { color: var(--danger); }
+  .log-info { color: var(--accent); }
+
+  /* ── Window list ── */
+  .win-list { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
+  .win-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: border-color 0.15s;
+  }
+  .win-item:hover { border-color: var(--accent); }
+  .win-title { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .win-id { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  /* ── Macro list ── */
+  .macro-list { display: flex; flex-direction: column; gap: 8px; }
+  .macro-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .macro-name { flex: 1; font-family: var(--mono); font-size: 12px; color: var(--accent); }
+
+  /* ── Recorder indicator ── */
+  .rec-badge {
+    display: none;
+    align-items: center; gap: 6px;
+    padding: 4px 12px;
+    background: rgba(255,77,109,0.15);
+    border: 1px solid var(--danger);
+    border-radius: 20px;
+    font-size: 11px;
+    color: var(--danger);
+    font-family: var(--mono);
+    margin-left: auto;
+  }
+  .rec-badge.active { display: flex; }
+  .rec-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); animation: pulse 1s infinite; }
+
+  /* ── Quick actions grid ── */
+  .quick-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .quick-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 16px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+    text-align: center;
+  }
+  .quick-btn:hover { border-color: var(--accent); box-shadow: var(--glow); }
+  .quick-btn .icon { font-size: 22px; }
+  .quick-btn .label { font-size: 11px; color: var(--muted); }
+
+  /* ── Script editor ── */
+  #script-editor {
+    width: 100%;
+    min-height: 280px;
+    background: #080809;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.7;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #script-editor:focus { border-color: var(--accent); }
+
+  .section-gap { margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="logo">AUTO<span>MATION APP</span></div>
+  <div class="nav-item active" data-panel="dashboard">
+    <span class="nav-icon">⚡</span> Dashboard
+    <span class="status-dot"></span>
+  </div>
+  <div class="nav-item" data-panel="mouse">
+    <span class="nav-icon">🖱️</span> Mouse
+  </div>
+  <div class="nav-item" data-panel="keyboard">
+    <span class="nav-icon">⌨️</span> Keyboard
+  </div>
+  <div class="nav-item" data-panel="windows">
+    <span class="nav-icon">🪟</span> Windows
+  </div>
+  <div class="nav-item" data-panel="recorder">
+    <span class="nav-icon">⏺️</span> Recorder
+  </div>
+  <div class="nav-item" data-panel="script">
+    <span class="nav-icon">📝</span> Script
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="main">
+  <div class="topbar">
+    <span class="topbar-title">AUTOMATION APP</span>
+    <span class="topbar-badge">v1.0</span>
+    <div class="ws-status">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">Connecting…</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- Dashboard -->
+    <div class="panel active" id="panel-dashboard">
+      <div class="quick-grid">
+        <div class="quick-btn" onclick="quickClick()"><div class="icon">🖱️</div><div class="label">Click</div></div>
+        <div class="quick-btn" onclick="quickType()"><div class="icon">⌨️</div><div class="label">Type</div></div>
+        <div class="quick-btn" onclick="quickHotkey()"><div class="icon">⚡</div><div class="label">Hotkey</div></div>
+        <div class="quick-btn" onclick="quickWindows()"><div class="icon">🪟</div><div class="label">Windows</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Quick Click</div>
+          <div class="row">
+            <div class="field"><label>X</label><input type="number" id="d-x" value="500"></div>
+            <div class="field"><label>Y</label><input type="number" id="d-y" value="400"></div>
+          </div>
+          <div class="field">
+            <label>Button</label>
+            <select id="d-btn"><option value="left">Left</option><option value="right">Right</option></select>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="doQuickClick()">Click at Coordinates</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Quick Type</div>
+          <div class="field"><label>Text to type</label><input type="text" id="d-text" placeholder="Hello, World!"></div>
+          <div class="field"><label>Delay between keys (ms)</label><input type="number" id="d-delay" value="30"></div>
+          <button class="btn btn-primary btn-full" onclick="doQuickType()">Type Text</button>
+        </div>
+      </div>
+      <div class="card section-gap">
+        <div class="card-title">Activity Log</div>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+
+    <!-- Mouse -->
+    <div class="panel" id="panel-mouse">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Move Mouse</div>
+          <div class="row">
+            <div class="field"><label>X</label><input type="number" id="m-move-x" value="500"></div>
+            <div class="field"><label>Y</label><input type="number" id="m-move-y" value="400"></div>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="send('mouse.move',{x:+id('m-move-x').value,y:+id('m-move-y').value})">Move</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Click</div>
+          <div class="row">
+            <div class="field"><label>X</label><input type="number" id="m-cx" value="500"></div>
+            <div class="field"><label>Y</label><input type="number" id="m-cy" value="400"></div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Button</label>
+              <select id="m-cbtn"><option value="left">Left</option><option value="right">Right</option></select>
+            </div>
+            <div class="field">
+              <label>Double click</label>
+              <select id="m-cdbl"><option value="false">No</option><option value="true">Yes</option></select>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="doMouseClick()">Click</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Scroll</div>
+          <div class="row">
+            <div class="field"><label>X</label><input type="number" id="m-sx" value="500"></div>
+            <div class="field"><label>Y</label><input type="number" id="m-sy" value="400"></div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Direction</label>
+              <select id="m-sdir"><option value="down">Down</option><option value="up">Up</option></select>
+            </div>
+            <div class="field"><label>Amount</label><input type="number" id="m-samt" value="3"></div>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="doScroll()">Scroll</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Drag</div>
+          <div class="row">
+            <div class="field"><label>From X</label><input type="number" id="m-fx" value="200"></div>
+            <div class="field"><label>From Y</label><input type="number" id="m-fy" value="200"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>To X</label><input type="number" id="m-tx" value="600"></div>
+            <div class="field"><label>To Y</label><input type="number" id="m-ty" value="400"></div>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="send('mouse.drag',{fromX:+id('m-fx').value,fromY:+id('m-fy').value,toX:+id('m-tx').value,toY:+id('m-ty').value})">Drag</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keyboard -->
+    <div class="panel" id="panel-keyboard">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Type Text</div>
+          <div class="field"><label>Text</label><textarea id="k-text" placeholder="Enter text to type..."></textarea></div>
+          <div class="field"><label>Delay between keys (ms)</label><input type="number" id="k-delay" value="30"></div>
+          <button class="btn btn-primary btn-full" onclick="send('keyboard.type',{text:id('k-text').value,delayMs:+id('k-delay').value})">Type</button>
+        </div>
+        <div>
+          <div class="card">
+            <div class="card-title">Send Hotkey</div>
+            <div class="field"><label>Keys (comma separated, e.g. ctrl,c)</label><input type="text" id="k-hotkey" placeholder="ctrl,c"></div>
+            <button class="btn btn-primary btn-full" onclick="doHotkey()">Send Hotkey</button>
+          </div>
+          <div class="card section-gap">
+            <div class="card-title">Press Key</div>
+            <div class="field">
+              <label>Key</label>
+              <select id="k-key">
+                <option value="enter">Enter</option>
+                <option value="escape">Escape</option>
+                <option value="tab">Tab</option>
+                <option value="backspace">Backspace</option>
+                <option value="delete">Delete</option>
+                <option value="up">Arrow Up</option>
+                <option value="down">Arrow Down</option>
+                <option value="left">Arrow Left</option>
+                <option value="right">Arrow Right</option>
+                <option value="home">Home</option>
+                <option value="end">End</option>
+                <option value="pageup">Page Up</option>
+                <option value="pagedown">Page Down</option>
+                <option value="f5">F5</option>
+                <option value="f11">F11</option>
+                <option value="space">Space</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="send('keyboard.press',{key:id('k-key').value})">Press Key</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Windows -->
+    <div class="panel" id="panel-windows">
+      <div class="card">
+        <div class="card-title">Open Windows</div>
+        <div style="display:flex;gap:10px;margin-bottom:16px;">
+          <button class="btn" onclick="loadWindows()">🔄 Refresh</button>
+        </div>
+        <div class="win-list" id="win-list"><span style="color:var(--muted);font-size:12px;">Click Refresh to load windows.</span></div>
+      </div>
+    </div>
+
+    <!-- Recorder -->
+    <div class="panel" id="panel-recorder">
+      <div class="card">
+        <div class="card-title">
+          Macro Recorder
+          <div class="rec-badge" id="rec-badge"><div class="rec-dot"></div> RECORDING</div>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:20px;">
+          <button class="btn btn-danger" id="rec-start" onclick="recStart()">⏺ Start Recording</button>
+          <button class="btn" id="rec-stop" onclick="recStop()" disabled>⏹ Stop</button>
+        </div>
+        <div id="rec-result" style="display:none;">
+          <div class="field"><label>Macro Name</label><input type="text" id="rec-name" placeholder="my-macro"></div>
+          <div style="display:flex;gap:10px;">
+            <button class="btn btn-success" onclick="recSave()">💾 Save Macro</button>
+            <button class="btn btn-primary" onclick="recPlayCurrent()">▶ Play</button>
+          </div>
+        </div>
+      </div>
+      <div class="card section-gap">
+        <div class="card-title">Saved Macros</div>
+        <div style="margin-bottom:12px;">
+          <button class="btn btn-sm" onclick="loadMacros()">🔄 Refresh</button>
+        </div>
+        <div class="macro-list" id="macro-list"><span style="color:var(--muted);font-size:12px;">No macros found.</span></div>
+      </div>
+    </div>
+
+    <!-- Script -->
+    <div class="panel" id="panel-script">
+      <div class="card">
+        <div class="card-title">Script Editor</div>
+        <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm" onclick="insertSnippet('click')">+ Click</button>
+          <button class="btn btn-sm" onclick="insertSnippet('type')">+ Type</button>
+          <button class="btn btn-sm" onclick="insertSnippet('hotkey')">+ Hotkey</button>
+          <button class="btn btn-sm" onclick="insertSnippet('sleep')">+ Sleep</button>
+          <button class="btn btn-sm btn-danger" onclick="id('script-editor').value=''">✕ Clear</button>
+        </div>
+        <textarea id="script-editor" spellcheck="false" placeholder="// Write your automation script here.
+// Each line should be a JSON command, e.g.:
+// {&quot;action&quot;:&quot;mouse.click&quot;,&quot;payload&quot;:{&quot;x&quot;:500,&quot;y&quot;:400}}
+// {&quot;action&quot;:&quot;keyboard.type&quot;,&quot;payload&quot;:{&quot;text&quot;:&quot;Hello!&quot;}}
+// {&quot;action&quot;:&quot;sleep&quot;,&quot;payload&quot;:{&quot;ms&quot;:1000}}
+"></textarea>
+        <div style="display:flex;gap:10px;margin-top:12px;">
+          <button class="btn btn-primary" onclick="runScript()">▶ Run Script</button>
+          <div class="field" style="margin:0;display:flex;align-items:center;gap:8px;">
+            <label style="margin:0;white-space:nowrap;">Speed</label>
+            <input type="number" id="script-speed" value="1" min="0.1" max="10" step="0.1" style="width:70px;">
+          </div>
+        </div>
+        <div class="log section-gap" id="script-log"></div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script src="app.js"></script>
+</body>
+</html>
