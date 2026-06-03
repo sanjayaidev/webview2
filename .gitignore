@@ -1,0 +1,22 @@
+```
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+*.exe
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+```
