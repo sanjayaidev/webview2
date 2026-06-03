@@ -1,0 +1,129 @@
+name: Build Automation Desktop App
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'launcher/**'
+      - 'package.json'
+      - '.github/workflows/automation-app-build.yml'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows Desktop App
+    runs-on: windows-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Node.js backend ────────────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install pkg globally
+        run: npm install -g pkg
+
+      - name: Bundle Node.js app into backend.exe
+        run: pkg . --target node20-win-x64 --output dist/backend.exe --compress GZip
+
+      # ── WebView2 NuGet package ─────────────────────────────────────────────
+      - name: Install NuGet CLI
+        run: choco install nuget.commandline -y
+
+      - name: Download WebView2 NuGet package
+        run: |
+          nuget install Microsoft.Web.WebView2 -OutputDirectory packages -NonInteractive
+          nuget install Microsoft.Windows.ImplementationLibrary -OutputDirectory packages -NonInteractive
+
+      - name: Detect WebView2 package path
+        id: pkgpaths
+        shell: pwsh
+        run: |
+          $wv2 = (Get-ChildItem -Path packages -Filter "Microsoft.Web.WebView2.*" -Directory | Select-Object -First 1).FullName
+          $wil = (Get-ChildItem -Path packages -Filter "Microsoft.Windows.ImplementationLibrary.*" -Directory | Select-Object -First 1).FullName
+          echo "WEBVIEW2_PATH=$wv2" >> $env:GITHUB_OUTPUT
+          echo "WIL_PATH=$wil"      >> $env:GITHUB_OUTPUT
+          echo "WebView2 path: $wv2"
+          echo "WIL path:      $wil"
+
+      - name: Copy WebView2Loader.dll to dist
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          $dll = Get-ChildItem -Path "${{ steps.pkgpaths.outputs.WEBVIEW2_PATH }}" -Recurse -Filter "WebView2Loader.dll" `
+                 | Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
+          if (-not $dll) { Write-Error "WebView2Loader.dll not found!"; exit 1 }
+          Write-Host "Found: $($dll.FullName)"
+          Copy-Item $dll.FullName "dist\WebView2Loader.dll"
+
+      # ── C++ launcher ───────────────────────────────────────────────────────
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Compile C++ Win32 WebView2 launcher
+        shell: pwsh
+        run: |
+          $wv2Include = "${{ steps.pkgpaths.outputs.WEBVIEW2_PATH }}\build\native\include"
+          $wilInclude = "${{ steps.pkgpaths.outputs.WIL_PATH }}\include"
+          $wv2Lib     = "${{ steps.pkgpaths.outputs.WEBVIEW2_PATH }}\build\native\x64"
+
+          cl.exe /EHsc /std:c++17 /O2 /W3 `
+            /I"$wv2Include" /I"$wilInclude" `
+            launcher\launcher.cpp `
+            /Fe:dist\automation-app.exe `
+            /link /SUBSYSTEM:WINDOWS `
+            /LIBPATH:"$wv2Lib" `
+            WebView2LoaderStatic.lib `
+            user32.lib ole32.lib shell32.lib shlwapi.lib
+
+      # ── Copy public HTML assets ────────────────────────────────────────────
+      - name: Copy public UI assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\public
+          Copy-Item -Recurse public\* dist\public\
+
+      # ── Verify dist ────────────────────────────────────────────────────────
+      - name: List dist contents
+        shell: pwsh
+        run: |
+          Write-Host "=== dist/ ==="
+          Get-ChildItem -Recurse dist | ForEach-Object {
+            "{0,10} KB  {1}" -f [math]::Round($_.Length/1KB, 1), $_.FullName
+          }
+
+      # ── Package into zip ───────────────────────────────────────────────────
+      - name: Zip portable app
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\* -DestinationPath automation-app-windows.zip
+          $size = [math]::Round((Get-Item automation-app-windows.zip).Length / 1MB, 2)
+          Write-Host "Package size: $size MB"
+
+      # ── Upload artifact ────────────────────────────────────────────────────
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: automation-app-windows
+          path: automation-app-windows.zip
+          retention-days: 30
+
+      # ── Create GitHub Release (on version tags only) ───────────────────────
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: automation-app-windows.zip
+          generate_release_notes: true
