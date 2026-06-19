@@ -14,7 +14,7 @@ on:
 jobs:
   build-windows:
     name: Build Windows DLL
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
 
@@ -28,6 +28,11 @@ jobs:
           git clone --depth 1 -b godot-4.4.1-stable https://github.com/godotengine/godot-cpp.git ../godot-cpp
           cd ../godot-cpp
           git submodule update --init --recursive
+
+      - name: Setup Visual Studio
+        uses: microsoft/setup-msbuild@v1
+        with:
+          vs-version: '17.0'
 
       - name: Install NuGet packages
         run: |
@@ -46,11 +51,11 @@ jobs:
           echo "WIL:      $wil"
 
       - name: Configure CMake
-      run: |
-        cmake -B build -A x64 `
-          -DGODOT_CPP_PATH="${{ github.workspace }}/../godot-cpp" `
-          -DWEBVIEW2_PATH="${{ steps.pkgpaths.outputs.WEBVIEW2_PATH }}" `
-          -DWIL_PATH="${{ steps.pkgpaths.outputs.WIL_PATH }}"
+        run: |
+          cmake -B build -A x64 `
+            -DGODOT_CPP_PATH="${{ github.workspace }}/../godot-cpp" `
+            -DWEBVIEW2_PATH="${{ steps.pkgpaths.outputs.WEBVIEW2_PATH }}" `
+            -DWIL_PATH="${{ steps.pkgpaths.outputs.WIL_PATH }}"
 
       - name: Build Release
         run: cmake --build build --config Release --parallel
