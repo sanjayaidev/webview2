@@ -46,11 +46,11 @@ jobs:
           echo "WIL:      $wil"
 
       - name: Configure CMake
-        run: |
-          cmake -B build -G "Visual Studio 17 2022" -A x64 `
-            -DGODOT_CPP_PATH="${{ github.workspace }}/../godot-cpp" `
-            -DWEBVIEW2_PATH="${{ steps.pkgpaths.outputs.WEBVIEW2_PATH }}" `
-            -DWIL_PATH="${{ steps.pkgpaths.outputs.WIL_PATH }}"
+      run: |
+        cmake -B build -A x64 `
+          -DGODOT_CPP_PATH="${{ github.workspace }}/../godot-cpp" `
+          -DWEBVIEW2_PATH="${{ steps.pkgpaths.outputs.WEBVIEW2_PATH }}" `
+          -DWIL_PATH="${{ steps.pkgpaths.outputs.WIL_PATH }}"
 
       - name: Build Release
         run: cmake --build build --config Release --parallel
